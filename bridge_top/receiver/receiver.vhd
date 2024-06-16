@@ -84,7 +84,7 @@ begin
                     if receive_count_reg = 3 then
                         receive_state_reg <= done;
                     else
-                        receive_state_reg <= s3;
+                        receive_state_reg <= s4;
                     end if;
                 end if;
             when s4 =>
