@@ -1,0 +1,314 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use ieee.numeric_std.all;
+
+entity bridge is
+    port
+    (
+        clk_100MHz : in std_logic;
+        nReset : in std_logic;
+
+        -- axi modules interface
+        wordcount : in std_logic_vector(31 downto 0);
+        enable    : in std_logic;
+        busy      : out std_logic;
+        complete  : out std_logic;
+
+        -- spi modules interface
+        valid : in std_logic;
+        ready : out std_logic;
+        drdy : in std_logic;
+        spi_en : out std_logic;
+
+        receive : in std_logic_vector(7 downto 0);
+        transmit : out std_logic_vector(7 downto 0);
+
+        -- bram interface for mosi
+        ser_BRAM_CLKA 		        : out std_logic;
+		ser_BRAM_ENA_A		        : out std_logic;
+        ser_bram_we_a               : out std_logic_vector(3 downto 0);
+		ser_BRAM_ADDRA              : out std_logic_vector(31 downto 0);
+        ser_BRAM_DATA_A_READ        : in std_logic_vector(31 downto 0);
+        ser_BRAM_DATA_A_write       : out std_logic_vector(31 downto 0);
+
+        -- bram interface for miso
+        par_BRAM_CLKb 		        : out std_logic;
+		par_BRAM_ENA_b		        : out std_logic;
+        par_bram_we_b               : out std_logic_vector(3 downto 0);
+		par_BRAM_ADDRB              : out std_logic_vector(31 downto 0);
+        -- not used read bus in miso modules
+        par_BRAM_DATA_B_WRITE       : out std_logic_vector(31 downto 0)
+    );
+end bridge;
+
+architecture RTL of bridge is
+
+signal spi_en_reg : std_logic;
+
+type bridge_state is (idle,r1,s1,s2,done);
+signal bridge_state_reg : bridge_state := idle;
+signal access_count_reg : Integer;
+signal access_count_area : Integer;
+signal busy_reg : std_logic;
+signal com_reg : std_logic;
+signal transmiter_en : std_logic;
+signal receiver_en : std_logic;
+
+signal ready_reg : std_logic;
+signal transmit_reg : std_logic_vector(7 downto 0);
+type transmiter_state is (s0,s1,s2,s3,s4,s5);
+signal transmiter_state_reg : transmiter_state;
+signal prev_drdy : std_logic;
+
+signal ser_data : std_logic_vector(31 downto 0);
+signal ser_state_cnt : std_logic_vector(2 downto 0);
+
+signal bram_ser_drdy : std_logic;
+signal bram_read_data : std_logic_vector(31 downto 0);
+signal bram_ser_en : std_logic;
+signal bram_we_a_reg : std_logic_vector(3 downto 0);
+signal bram_ena_reg : std_logic;
+signal bram_addra_reg : std_logic_vector(29 downto 0);
+signal bram_writea_reg : std_logic_vector(31 downto 0);
+signal bram_ser_reada_data_reg : std_logic_vector(31 downto 0);
+signal bram_read_complete_reg : std_logic;
+
+
+type bram_ser_state is (s0,s1,s2,s3,s4,s5);
+signal bram_ser_state_reg : bram_ser_state;
+
+begin
+
+busy <= busy_reg;
+complete <= com_reg;
+spi_en <= spi_en_reg;
+
+process(clk_100MHz, nReset)
+    variable value : integer := 0;
+    variable result : UNSIGNED(29 downto 0) := (others => '0');
+begin
+    if nReset = '0' then
+        bridge_state_reg <= idle;
+        busy_reg <= '0';
+        com_reg <= '0';
+        receiver_en <= '0';
+        transmiter_en <= '0';
+        spi_en_reg <= '0';
+        --wordcount_Reg <= (others => '0');
+        access_count_reg <= 0;
+       -- access_area_reg <= (others => '0');
+    elsif rising_edge(clk_100MHz) then
+        case bridge_state_reg is
+            when idle =>
+                if enable = '1' then
+                    --wordcount_Reg <= wordcount;
+                    if unsigned(wordcount) = 0 then
+                        access_count_reg <= 0;
+                    else
+                        if unsigned(wordcount) - 1 = 0 then
+                            access_count_reg <= 1;
+                            access_count_area <= 1;
+                        else 
+                            access_count_area <= (to_integer(unsigned(wordcount))) mod 4;
+                            access_count_reg <= ((to_integer(unsigned(wordcount)) - 1)/4) + 1;
+                        end if;    
+                        busy_reg <= '1';
+                        com_reg <= '0';
+                        bridge_state_reg <= r1;
+                    end if;
+                end if;
+            when r1 =>
+                transmiter_en <= '1';
+                receiver_en <= '1';
+                spi_en_reg <= '1';
+                bridge_state_reg <= s1;
+            when s1 =>
+                if bram_read_complete_reg = '1' then
+                    bridge_state_reg <= done;
+                    --transmiter_en <= '0';
+                    receiver_en <= '0';
+                    --spi_en_reg <= '0';
+                end if;
+            when done =>
+                busy_reg <= '0';
+                com_reg <= '1';
+                bridge_state_reg <= idle;
+            when others =>
+                null;
+        end case;
+    end if;
+end process;
+
+process(clk_100MHz, nReset)
+begin
+    if nReset = '0' then
+        transmit_reg <= (others => '0');
+        ready_reg <= '0';
+    elsif rising_edge(clk_100MHz) then
+        case transmiter_state_reg is
+            when s0 =>
+                ready_reg <= '0';
+                transmit_reg <= (others => '0');
+            when s1 =>
+                ready_reg <= '1';
+                transmit_reg <= ser_data(7 downto 0);
+            when s2 =>
+                ready_reg <= '1';
+                transmit_reg <= ser_data(15 downto 8);
+            when s3 =>
+                ready_reg <= '1';
+                transmit_reg <= ser_data(23 downto 16);
+            when s4 =>
+                ready_reg <= '1';
+                transmit_reg <= ser_data(31 downto 24);
+            when s5 =>
+                --ready_reg <= '0';
+            when others =>
+                null;           
+        end case;
+    end if;
+end process;
+
+ready <= ready_reg;
+transmit <= transmit_reg;
+
+process(clk_100MHz,nReset)
+begin
+    if nReset = '0' then
+        transmiter_state_reg <= s0;
+        ser_state_cnt <= "000";
+        prev_drdy <= '0';
+        ser_data <= (others => '0');
+        bram_ser_en <= '0';
+    elsif rising_edge(clk_100MHz) then
+        if transmiter_en = '1' then
+            case ser_state_cnt is
+                when "000" =>
+                    if bram_ser_drdy = '1' then
+                        ser_data <= bram_read_data;
+                        transmiter_state_reg <= s1;
+                        ser_state_cnt <= "001";
+                        bram_ser_en <= '0';
+                    else
+                        bram_ser_en <= '1';
+                        --transmiter_state_reg <= s5;    
+                    end if;
+                when "001" =>
+                    if drdy = '1' and prev_drdy = '0' then
+                        transmiter_state_reg <= s2;
+                        ser_state_cnt <= "010";
+                    --else
+                        --transmiter_state_reg <= s5;
+                    end if;
+                when "010" =>
+                    if drdy = '1' and prev_drdy = '0' then
+                        transmiter_state_reg <= s3;
+                        ser_state_cnt <= "011";
+                    --else
+                        --transmiter_state_reg <= s5;    
+                    end if;
+                when "011" =>
+                    if drdy = '1' and prev_drdy = '0' then
+                        transmiter_state_reg <= s4;
+                        ser_state_cnt <= "100";
+                    --else
+                        --transmiter_state_reg <= s5;    
+                    end if;
+                when "100" =>
+                    if drdy = '1' and prev_drdy = '0' then
+                        transmiter_state_reg <= s1;
+                        ser_state_cnt <= "000";
+                    end if;
+                when others =>
+                        null;                    
+            end case;
+            prev_drdy <= drdy;
+        end if;
+    end if;
+end process;
+
+ser_BRAM_CLKA <= clk_100MHz;
+ser_BRAM_ENA_A <= bram_ena_reg;
+ser_bram_we_a <= bram_we_a_reg;
+ser_BRAM_ADDRA(31 downto 2) <= bram_addra_reg;
+bram_ser_reada_data_reg <= ser_BRAM_DATA_A_READ;
+ser_BRAM_DATA_A_write <= bram_writea_reg;
+
+process(clk_100MHz, nReset)
+begin
+    if nReset = '0' then
+        bram_ser_state_reg <= s0;
+        bram_we_a_reg <= "0000";
+        bram_writea_reg <= (others => '0');
+        bram_read_data <= (others => '0');
+        bram_ser_drdy <= '0';
+        bram_addra_reg <= (others => '0');
+        bram_read_complete_reg <= '0';
+    elsif rising_edge(clk_100MHz) then
+        case bram_ser_state_reg is
+            when s0 =>
+                if transmiter_en = '1' then
+                    if bram_ser_en = '1' then
+                        if  access_count_reg = unsigned(bram_addra_reg) then
+                            bram_ser_state_reg <= s0;
+                            bram_read_complete_reg <= '1';
+                        else
+                            bram_ena_reg <= '1';
+                            bram_read_complete_reg <= '0';
+                            bram_addra_reg <= std_logic_vector(unsigned(bram_addra_reg) + 1);
+                            if access_count_reg - 1 = unsigned(bram_addra_reg) then
+                                bram_ser_state_reg <= s3;
+                            else
+                                bram_ser_state_reg <= s1;
+                            end if;
+                        end if;
+                    end if;
+                else
+                    bram_ser_drdy <= '0';
+                    bram_ena_reg <= '0';
+                    bram_addra_reg <= (others => '0');
+                end if;
+            when s1 =>
+                bram_ena_reg <= '0';
+                bram_read_data <= bram_ser_reada_data_reg;
+                bram_ser_drdy <= '1';
+                bram_ser_state_reg <= s2;
+            when s2 =>
+                bram_ser_drdy <= '0';
+                if ser_state_cnt = "011" then
+                    bram_ser_state_reg <= s0;
+                end if;
+            when s3 =>
+                bram_ena_reg <= '0';
+                bram_read_data <= bram_ser_reada_data_reg;
+                bram_ser_drdy <= '1';
+                bram_ser_state_reg <= s4;
+            when s4 =>
+                bram_ser_drdy <= '0';
+                if ser_state_cnt = std_logic_vector(to_unsigned(access_count_area,3)) then
+                    bram_ser_state_reg <= s5;
+                end if;
+            when s5 =>
+                bram_read_complete_reg <= '1';
+                if transmiter_en = '0' then
+                    bram_ser_state_reg <= s0;
+                end if;
+            when others =>
+                null;                
+        end case;
+    end if;
+end process;
+
+
+process(clk_100MHz, nReset)
+begin
+    if nReset = '0' then
+    elsif rising_edge(clk_100MHz) then
+        if receiver_en = '1' then
+            
+        end if;
+    end if;
+end process;
+
+
+end RTL;

@@ -1,0 +1,81 @@
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+use ieee.numeric_std.all;
+
+entity bram_interface is
+    port
+    (
+        clk_100MHz : in std_logic;
+        nReset : in std_logic;
+        transmiter_en : in std_logic;
+        ser_BRAM_DATA_A_READ : in std_logic_vector(31 downto 0);
+        ser_BRAM_CLKA : out std_logic;
+        ser_BRAM_ENA_A : out std_logic;
+        ser_bram_we_a : out std_logic_vector(3 downto 0);
+        ser_BRAM_ADDRA : out std_logic_vector(31 downto 0);
+        ser_BRAM_DATA_A_write : out std_logic_vector(31 downto 0);
+        bram_read_data : out std_logic_vector(31 downto 0);
+        bram_ser_drdy : out std_logic;
+        bram_read_complete_reg : out std_logic
+    );
+end bram_interface;
+
+architecture RTL of bram_interface is
+    type bram_ser_state is (s0, s1, s2);
+    signal bram_ser_state_reg : bram_ser_state := s0;
+    signal bram_ena_reg : std_logic;
+    signal bram_we_a_reg : std_logic_vector(3 downto 0);
+    signal bram_addra_reg : std_logic_vector(31 downto 0);
+    signal bram_writea_reg : std_logic_vector(31 downto 0);
+    signal ser_state_cnt : std_logic_vector(2 downto 0);
+    signal access_count_reg : std_logic_vector(31 downto 0);
+begin
+    ser_BRAM_CLKA <= clk_100MHz;
+    ser_BRAM_ENA_A <= bram_ena_reg;
+    ser_bram_we_a <= bram_we_a_reg;
+    ser_BRAM_ADDRA <= bram_addra_reg;
+    ser_BRAM_DATA_A_write <= bram_writea_reg;
+
+    process(clk_100MHz, nReset)
+    begin
+        if nReset = '0' then
+            bram_ser_state_reg <= s0;
+            bram_we_a_reg <= "0000";
+            bram_writea_reg <= (others => '0');
+            bram_read_data <= (others => '0');
+            bram_ser_drdy <= '0';
+            bram_read_complete_reg <= '0';
+        elsif rising_edge(clk_100MHz) then
+            case bram_ser_state_reg is
+                when s0 =>
+                    if transmiter_en = '1' then
+                        if bram_ser_drdy = '1' then
+                            if access_count_reg = bram_addra_reg then
+                                bram_ser_state_reg <= s0;
+                                bram_read_complete_reg <= '1';
+                            else
+                                bram_ena_reg <= '1';
+                                bram_read_complete_reg <= '0';
+                                bram_addra_reg <= std_logic_vector(unsigned(bram_addra_reg) + 1);
+                                bram_ser_state_reg <= s1;
+                            end if;
+                        end if;
+                    else
+                        bram_ser_drdy <= '0';
+                        bram_ena_reg <= '0';
+                        bram_addra_reg <= (others => '0');
+                    end if;
+                when s1 =>
+                    bram_ena_reg <= '0';
+                    bram_read_data <= ser_BRAM_DATA_A_READ;
+                    bram_ser_drdy <= '1';
+                    bram_ser_state_reg <= s2;
+                when s2 =>
+                    bram_ser_drdy <= '0';
+                    if ser_state_cnt = "011" then
+                        bram_ser_state_reg <= s1;
+                    end if;
+            end case;
+        end if;
+    end process;
+end RTL;
