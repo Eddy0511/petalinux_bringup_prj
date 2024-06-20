@@ -35,7 +35,7 @@ begin
             if ena_a = '1' then
                 rddata_a <= mem(to_integer(unsigned(addr_a)));
                 if wrena_a = "1111" then
-                    mem(to_integer(unsigned(addr_a(31 downto 2)))) := wrdata_a;
+                    mem(to_integer(unsigned(addr_a(9 downto 2)))) := wrdata_a;
                 end if;
             end if;
         end if;

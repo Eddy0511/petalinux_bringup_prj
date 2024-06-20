@@ -6,6 +6,7 @@ entity top is
 port (
     clk_100MHz : in std_logic;
     clk_10MHz : in std_logic;
+    miso : in std_logic;
     nReset : in std_logic;
     enable : in std_logic
 );
@@ -78,6 +79,45 @@ architecture RTL of top is
     );
     end component;
 
+    component receiver 
+    port
+    (
+        clk_100MHz : in std_logic;
+        nReset : in std_logic;
+
+        valid : in std_logic;
+        ready : out std_logic;
+
+        receive_count : in integer;
+
+        bram_data : out std_logic_vector(31 downto 0);
+        receive_data : in std_logic_vector(7 downto 0);
+
+        drdy : in std_logic
+    );
+    end component;
+
+    component miso_bram_ctrl
+    port
+    (
+        clk_100MHz : in std_logic;
+        nReset : in std_logic;
+
+        valid : in std_logic;
+        ready : out std_logic;
+        addr_clr : in std_logic;
+
+        write_data : in std_logic_vector(31 downto 0);
+
+        bram_clka : out std_logic;
+        bram_rsta : out std_logic;
+        bram_wea : out std_logic_vector(3 downto 0);
+        bram_ena : out std_logic;
+        bram_addra : out std_logic_vector(31 downto 0);
+        bram_write_dataa : out std_logic_vector(31 downto 0)
+    );
+    end component;
+
     signal transmit_valid_reg : std_logic;
     signal transmit_ready_reg : std_logic;
     signal transmit_complete_reg : std_logic;
@@ -115,6 +155,24 @@ architecture RTL of top is
 
     type main_state is (idle,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10,done);
     signal main_state_reg : main_state;
+
+    signal receive_valid_reg : std_logic;
+    signal receive_ready_reg : std_logic;
+    signal receive_count_reg : integer;
+    signal recv_bram_data : std_logic_vector(31 downto 0);
+    signal recv_drdy : std_logic;
+
+    signal bram_validb_reg : std_logic;
+    signal bram_readyb_reg : std_logic;
+    signal bram_addrb_clr_reg : std_logic;
+    signal bram_clkb_reg : std_logic;
+    signal bram_rstb_reg : std_logic;
+    signal bram_web_reg : std_logic_vector(3 downto 0);
+    signal bram_enb_reg : std_logic;
+    signal bram_addrb_reg : std_logic_vector(31 downto 0);
+    signal bram_read_datab_reg : std_logic_vector(31 downto 0);
+    signal bram_write_datab_reg : std_logic_vector(31 downto 0);
+    signal write_data_reg : std_logic_vector(31 downto 0);
 begin
 
     u1 : tranmitter
@@ -159,8 +217,8 @@ begin
         transmit =>  receive_data_reg,
         receive =>  transmit_data_reg,
         sclk =>   sclk_reg,
-        MISO =>   mosi_reg,
-        MOSI =>   miso_reg,
+        MISO =>   miso_reg,
+        MOSI =>   mosi_reg,
         cs =>   cs_reg
     );
 
@@ -174,21 +232,78 @@ begin
         clk_a => bram_clka_reg,
         rst_a => bram_rsta_reg
     );
+
+    u5 : receiver
+    port map(
+        clk_100MHz => clk_100MHz,
+        nReset  =>   nReset,
+
+        valid => receive_valid_reg,
+        ready => receive_ready_reg,
+
+        receive_count => receive_count_reg,
+
+        bram_data => recv_bram_data,
+        receive_data => receive_data_reg,
+
+        drdy => recv_drdy
+    );
+
+    u6 : miso_bram_ctrl 
+    port map
+    (
+        clk_100MHz => clk_100MHz,
+        nReset  =>   nReset,
+
+        valid => bram_validb_reg,
+        ready => bram_readyb_reg,
+        addr_clr => bram_addrb_clr_reg,
+
+        write_data => write_data_reg,
+
+        bram_clka  => bram_clkb_reg,
+        bram_rsta  => bram_rstb_reg,
+        bram_wea  => bram_web_reg,
+        bram_ena  => bram_enb_reg,
+        bram_addra => bram_addrb_reg,
+        bram_write_dataa => bram_write_datab_reg
+    );
+
+    u7 : ram
+    port map(
+        ena_a => bram_enb_reg,
+        addr_a => bram_addrb_reg(11 downto 2),
+        wrena_a => bram_web_reg,
+        wrdata_a => write_data_reg,
+        rddata_a => open,
+        clk_a => bram_clkb_reg,
+        rst_a => bram_rstb_reg
+    );
+
+
+    miso_reg <= miso;
     
 
 process(clk_100MHz,nReset)
 begin
     if nReset = '0' then
+        recv_drdy <= '0';
+        receive_valid_reg <= '0';
         main_state_reg <= idle;
         bram_valid_reg <= '0';
         bram_data_reg <= (others => '0');
+        --receive_data_reg <= (others => '0');
         transmit_valid_reg <= '0';
         transmit_count_reg <= 0;
+        receive_count_reg <= 0;
         mosi_ready_reg <= '0';
         spi_enable_reg <= '0';
         prev_spi_valid <= '0';
         spi_cnt <= 0;
         spi_cycle <= 0;
+        bram_validb_reg <= '0';
+        bram_addrb_clr_reg <= '0';
+        write_data_reg <= (others => '0');
     elsif rising_edge(clk_100MHz) then
         case main_state_reg is
           when idle =>
@@ -202,14 +317,17 @@ begin
                 bram_data_reg <= read_data_reg;
                 transmit_valid_reg <= '1';
                 transmit_count_reg <= 3;
+                receive_valid_reg <= '1';
+                receive_count_reg <= 3;
                 main_state_reg <= s2;
             end if;
           when s2 =>
-            if transmit_complete_reg = '1' then
+            if transmit_complete_reg = '1'  then
                 if spi_cnt = transmit_count_reg then
                     transmit_valid_reg <= '0';
                     mosi_ready_reg <= '0';
                     spi_enable_reg <= '0';
+                    
                     main_state_reg <= s3;
                 end if;
             else
@@ -217,16 +335,32 @@ begin
                 spi_enable_reg <= '1';
             end if;
 
+
+
             if prev_spi_valid = '0' and spi_valid_reg = '1' then
                 spi_cnt <= spi_cnt + 1;
+            --elsif prev_spi_valid = '1' and spi_valid_reg = '0' then
+                recv_drdy <= '1';
+            else
+                recv_drdy <= '0';
             end if;
           when s3 =>
+            
+
+            
+
+            
+
             if cs_reg = '1' then
                 spi_cnt <= 0;
+                -- 원래는 여기서 끝남. 여기까지는 miso 데이터 저장되는거 확인함
+                bram_validb_reg <= '1';
+                write_data_reg <= recv_bram_data;
                 bram_valid_reg <= '1';
                 main_state_reg <= s4;
             end if;
           when s4 =>
+            bram_validb_reg <= '0';
             if bram_ready_reg = '1' then
                 bram_valid_reg <= '0';
                 bram_data_reg <= read_data_reg;
