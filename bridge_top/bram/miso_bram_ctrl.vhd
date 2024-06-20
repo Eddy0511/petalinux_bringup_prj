@@ -2,7 +2,7 @@ library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
 
-entity bram_ctrl is
+entity miso_bram_ctrl is
     port
     (
         clk_100MHz : in std_logic;
@@ -21,9 +21,9 @@ entity bram_ctrl is
         bram_addra : out std_logic_vector(31 downto 0);
         bram_write_dataa : out std_logic_vector(31 downto 0)
     );
-end bram_ctrl;
+end miso_bram_ctrl;
 
-architecture RTL of bram_ctrl is
+architecture RTL of miso_bram_ctrl is
 signal addr_reg : integer;
 
 signal ready_reg : std_logic;
