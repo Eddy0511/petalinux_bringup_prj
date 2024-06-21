@@ -210,7 +210,7 @@ begin
             when b"000" =>  
             reg_data_out <= CTRL_DATA_IN;	
             when b"001" =>
-            reg_data_out <= WD_CNT_IN;
+            reg_data_out(15 downto 0) <= WD_CNT_IN;
         when others =>
             reg_data_out  <= (others => '0');
     end case;

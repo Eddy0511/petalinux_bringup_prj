@@ -6,9 +6,33 @@ entity top is
 port (
     clk_100MHz : in std_logic;
     clk_10MHz : in std_logic;
+
+    -- spi port
     miso : in std_logic;
+    mosi : out std_logic;
+    sclk : out std_logic;
+    cs : out std_logic;
+
+    -- bram interface
+    bram_clk_a : out std_logic;
+    bram_rst_a : out std_logic;
+    bram_we_a : out std_logic_vector(3 downto 0);
+    bram_en_a : out std_logic;
+    bram_rd_a : in std_logic_vector(31 downto 0);
+    bram_wr_a : out std_logic_vector(31 downto 0);
+    bram_addr_a : out std_logic_vector(29 downto 0);
+
+    bram_clk_b : out std_logic;
+    bram_rst_b : out std_logic;
+    bram_we_b : out std_logic_vector(3 downto 0);
+    bram_en_b : out std_logic;
+    bram_rd_b : in std_logic_vector(31 downto 0);
+    bram_wr_b : out std_logic_vector(31 downto 0);
+    bram_addr_b : out std_logic_vector(29 downto 0);
+
     nReset : in std_logic;
-    enable : in std_logic
+    enable : in std_logic;
+    count : in std_logic_vector(31 downto 0)  -- 변경된 부분
 );
 end top;
 
@@ -66,18 +90,6 @@ architecture RTL of top is
         cs : out STD_LOGIC
     );
     end component;    
-
-    component ram
-    port(
-        ena_a : in std_logic;
-        addr_a : in std_logic_vector(9 downto 0);
-        wrena_a : in std_logic_vector(3 downto 0);
-        wrdata_a : in std_logic_vector(31 downto 0);
-        rddata_a : out std_logic_vector(31 downto 0);
-        clk_a : in std_logic;
-        rst_a : in std_logic
-    );
-    end component;
 
     component receiver 
     port
@@ -222,17 +234,6 @@ begin
         cs =>   cs_reg
     );
 
-    u4 : ram
-    port map(
-        ena_a => bram_ena_reg,
-        addr_a => bram_addra_reg(11 downto 2),
-        wrena_a => bram_wea_reg,
-        wrdata_a => bram_write_dataa_reg,
-        rddata_a => bram_read_dataa_reg,
-        clk_a => bram_clka_reg,
-        rst_a => bram_rsta_reg
-    );
-
     u5 : receiver
     port map(
         clk_100MHz => clk_100MHz,
@@ -269,20 +270,27 @@ begin
         bram_write_dataa => bram_write_datab_reg
     );
 
-    u7 : ram
-    port map(
-        ena_a => bram_enb_reg,
-        addr_a => bram_addrb_reg(11 downto 2),
-        wrena_a => bram_web_reg,
-        wrdata_a => write_data_reg,
-        rddata_a => open,
-        clk_a => bram_clkb_reg,
-        rst_a => bram_rstb_reg
-    );
-
 
     miso_reg <= miso;
-    
+    mosi <= mosi_reg;
+    sclk <= sclk_reg;
+    cs <= cs_reg;
+
+    bram_clk_a <= bram_clka_reg;
+    bram_rst_a <= bram_rsta_reg;
+    bram_we_a <= bram_wea_reg;
+    bram_en_a <= bram_ena_reg;
+    bram_read_dataa_reg <= bram_rd_a;
+    bram_wr_a <= bram_write_dataa_reg;
+
+    bram_clk_b <= bram_clkb_reg;
+    bram_rst_b <= bram_rstb_reg;
+    bram_we_b <= bram_web_reg;
+    bram_en_b <= bram_enb_reg;
+    bram_read_datab_reg <= bram_rd_b;
+    bram_wr_b <= bram_write_datab_reg;
+
+
 
 process(clk_100MHz,nReset)
 begin
@@ -292,7 +300,6 @@ begin
         main_state_reg <= idle;
         bram_valid_reg <= '0';
         bram_data_reg <= (others => '0');
-        --receive_data_reg <= (others => '0');
         transmit_valid_reg <= '0';
         transmit_count_reg <= 0;
         receive_count_reg <= 0;
@@ -317,9 +324,9 @@ begin
                 bram_valid_reg <= '0';
                 bram_data_reg <= read_data_reg;
                 transmit_valid_reg <= '1';
-                transmit_count_reg <= 3;
+                transmit_count_reg <= to_integer(unsigned(count));  -- 변경된 부분
                 receive_valid_reg <= '1';
-                receive_count_reg <= 3;
+                receive_count_reg <= to_integer(unsigned(count));  -- 변경된 부분
                 main_state_reg <= s2;
             end if;
           when s2 =>
@@ -342,53 +349,11 @@ begin
                 recv_drdy <= '0';
             end if;
           when s3 =>
-            if cs_reg = '1' then  
-                spi_cnt <= 0;
-                -- 원래는 여기서 끝남. 여기까지는 miso 데이터 저장되는거 확인함
-                bram_validb_reg <= '1';
-                write_data_reg <= recv_bram_data;
-                bram_valid_reg <= '1';
-                main_state_reg <= s4;
-            end if;
-          when s4 =>
-            drdy_cnt <= 0;
-            bram_validb_reg <= '0';
-            if bram_ready_reg = '1' then
-                bram_valid_reg <= '0';
-                bram_data_reg <= read_data_reg;
-                transmit_valid_reg <= '1';
-                transmit_count_reg <= 4;
-                receive_valid_reg <= '1';
-                receive_count_reg <= 4;
-                main_state_reg <= s5;
-            end if;
-          when s5 =>
-            if transmit_complete_reg = '1' then
-                if spi_cnt = transmit_count_reg then
-                    transmit_valid_reg <= '0';
-                    mosi_ready_reg <= '0';
-                    spi_enable_reg <= '0';
-                    receive_valid_reg <= '0';
-                    main_state_reg <= s6;
-                end if;
-            else
-                mosi_ready_reg <= '1';
-                spi_enable_reg <= '1';
-            end if;
-            if prev_spi_valid = '0' and spi_valid_reg = '1' then
-                spi_cnt <= spi_cnt + 1;
-                recv_drdy <= '1';
-            else
-                recv_drdy <= '0';
-            end if;
-
-
-        when s6 =>
             if drdy_cnt = 4 then
                 if spi_cycle < 3 then
                     spi_cnt <= 0;
                     bram_valid_reg <= '1';
-                    main_state_reg <= s4;
+                    main_state_reg <= s1;
                     spi_cycle <= spi_cycle + 1;
                 else
                     spi_cnt <= 0;
@@ -397,14 +362,11 @@ begin
                 bram_validb_reg <= '1';
                 write_data_reg <= recv_bram_data;
             end if;
-   
         when done =>
             main_state_reg <= idle;
           when others =>
             null;
         end case;
-
-
         if prev_drdy = '0' and drdy_reg = '1' then
                 drdy_cnt <= drdy_cnt + 1;
         end if;
