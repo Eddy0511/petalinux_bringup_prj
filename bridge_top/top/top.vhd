@@ -303,6 +303,7 @@ begin
         spi_cycle <= 0;
         bram_validb_reg <= '0';
         bram_addrb_clr_reg <= '0';
+        drdy_cnt <= 0;
         write_data_reg <= (others => '0');
     elsif rising_edge(clk_100MHz) then
         case main_state_reg is
@@ -327,31 +328,21 @@ begin
                     transmit_valid_reg <= '0';
                     mosi_ready_reg <= '0';
                     spi_enable_reg <= '0';
-                    
+                    receive_valid_reg <= '0';
                     main_state_reg <= s3;
                 end if;
             else
                 mosi_ready_reg <= '1';
                 spi_enable_reg <= '1';
             end if;
-
-
-
             if prev_spi_valid = '0' and spi_valid_reg = '1' then
                 spi_cnt <= spi_cnt + 1;
-            --elsif prev_spi_valid = '1' and spi_valid_reg = '0' then
                 recv_drdy <= '1';
             else
                 recv_drdy <= '0';
             end if;
           when s3 =>
-            
-
-            
-
-            
-
-            if cs_reg = '1' then
+            if cs_reg = '1' then  
                 spi_cnt <= 0;
                 -- 원래는 여기서 끝남. 여기까지는 miso 데이터 저장되는거 확인함
                 bram_validb_reg <= '1';
@@ -360,12 +351,15 @@ begin
                 main_state_reg <= s4;
             end if;
           when s4 =>
+            drdy_cnt <= 0;
             bram_validb_reg <= '0';
             if bram_ready_reg = '1' then
                 bram_valid_reg <= '0';
                 bram_data_reg <= read_data_reg;
                 transmit_valid_reg <= '1';
                 transmit_count_reg <= 4;
+                receive_valid_reg <= '1';
+                receive_count_reg <= 4;
                 main_state_reg <= s5;
             end if;
           when s5 =>
@@ -374,6 +368,7 @@ begin
                     transmit_valid_reg <= '0';
                     mosi_ready_reg <= '0';
                     spi_enable_reg <= '0';
+                    receive_valid_reg <= '0';
                     main_state_reg <= s6;
                 end if;
             else
@@ -382,62 +377,37 @@ begin
             end if;
             if prev_spi_valid = '0' and spi_valid_reg = '1' then
                 spi_cnt <= spi_cnt + 1;
-            end if;
-        when s6 =>
-            if cs_reg = '1' then
-
-                spi_cnt <= 0;
-                bram_valid_reg <= '1';
-                main_state_reg <= s7;
-            end if;
-        when s7 =>
-            drdy_cnt <= 0;
-            if bram_ready_reg = '1' then
-                bram_valid_reg <= '0';
-                bram_data_reg <= read_data_reg;
-                transmit_valid_reg <= '1';
-                transmit_count_reg <= 4;
-                main_state_reg <= s8;
-            end if;
-        when s8 =>
-            if transmit_complete_reg = '1' then
-                if spi_cnt = transmit_count_reg then
-                    transmit_valid_reg <= '0';
-                    mosi_ready_reg <= '0';
-                    main_state_reg <= s9;
-                end if;
+                recv_drdy <= '1';
             else
-                mosi_ready_reg <= '1';
-                spi_enable_reg <= '1';
+                recv_drdy <= '0';
             end if;
-            if prev_spi_valid = '0' and spi_valid_reg = '1' then
-                spi_cnt <= spi_cnt + 1;
-            end if;
-            if prev_drdy = '0' and drdy_reg = '1' then
-                drdy_cnt <= drdy_cnt + 1;
-            end if;
-        when s9 =>
+
+
+        when s6 =>
             if drdy_cnt = 4 then
                 if spi_cycle < 3 then
                     spi_cnt <= 0;
                     bram_valid_reg <= '1';
-                    main_state_reg <= s7;
+                    main_state_reg <= s4;
                     spi_cycle <= spi_cycle + 1;
                 else
                     spi_cnt <= 0;
                     main_state_reg <= done;
                 end if;
+                bram_validb_reg <= '1';
+                write_data_reg <= recv_bram_data;
             end if;
-
-            if prev_drdy = '0' and drdy_reg = '1' then
-                drdy_cnt <= drdy_cnt + 1;
-            end if;
+   
         when done =>
             main_state_reg <= idle;
           when others =>
             null;
         end case;
 
+
+        if prev_drdy = '0' and drdy_reg = '1' then
+                drdy_cnt <= drdy_cnt + 1;
+        end if;
         prev_drdy <= drdy_reg;
         prev_spi_valid <= spi_valid_reg;
     end if;
