@@ -11,6 +11,8 @@ entity axi_conv_bridge_spi is
 
         WD_CNT_MI : in std_logic_vector(15 downto 0);
         WD_CNT_SO : out std_logic_vector(15 downto 0);
+        
+        catch_com : in std_logic;
 
         wd_cnt_conv : out std_logic_vector(31 downto 0);
         ctrl_data_conv : out std_logic
@@ -26,7 +28,11 @@ begin
 process(clk_100MHz)
 begin
     if rising_edge(clk_100MHz) then
-        ctrl_data_conv_reg <= CTRL_DATA_MI;
+        if catch_com = '1' then
+            ctrl_data_conv_reg(0) <= '0';
+        else
+            ctrl_data_conv_reg <= CTRL_DATA_MI;
+        end if;
         wd_cnt_conv_reg(15 downto 0) <= WD_CNT_MI;
     end if;
 end process;

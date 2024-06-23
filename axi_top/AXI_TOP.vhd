@@ -58,6 +58,8 @@ entity AXI_TOP is
         CTRL_DATA_OUT : out std_logic_vector(31 downto 0);
         CTRL_DATA_IN : in std_logic_vector(31 downto 0);
 
+        logic_com : in std_logic;
+
         WD_CNT_OUT : out std_logic_vector(15 downto 0);
         WD_CNT_IN  : in std_logic_vector(15 downto 0)
         );
@@ -148,6 +150,8 @@ begin
                     word_count_reg <= S_AXI_WDATA(15 downto 0);
 			    when others => null;
             end case;
+        elsif logic_com = '1' then
+            ctrl_reg(0) <= '0';
 		end if; 
     end if;
 end process;

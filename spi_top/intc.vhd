@@ -20,7 +20,7 @@ signal intc_cnt : integer;
 begin
 
 intc_pin <= intc_out_reg when intc_out_en = '0';
-intc_in_reg <= intc_pin when intc_out_en = '1';
+intc_in_reg <= intc_pin when intc_out_en = '1' else '1';
 
 
 process(nreset,clk)

@@ -37,7 +37,7 @@ signal complete_reg : std_logic;
 signal transmit_count_reg : integer;
 signal latch_reg  : std_logic;
 signal prev_drdy : std_logic;
-
+signal transmit_data_reg : std_logic_vector(7 downto 0);
 begin
 
 process(clk_100MHz, nReset)
@@ -52,7 +52,7 @@ begin
         bram_data_two_word_reg <= (others => '0');
         bram_data_three_word_reg  <= (others => '0');
         bram_data_four_word_reg <= (others => '0');
-        transmit_data <= (others => '0');
+        transmit_data_reg <= (others => '0');
     elsif rising_edge(clk_100MHz) then
         case transmit_state_reg is
             when idle =>
@@ -67,7 +67,7 @@ begin
                     transmit_state_reg <= s1;
                 end if;
             when s1 =>
-                transmit_data <= bram_data_one_word_reg;
+                transmit_data_reg <= bram_data_one_word_reg;
                 latch_reg <= '1';
                 if transmit_count_reg = 1 then
                     transmit_state_reg <= done;
@@ -76,7 +76,7 @@ begin
                 end if;
             when s2 =>
                 if drdy = '1' and prev_drdy = '0' then
-                    transmit_data <= bram_data_two_word_reg;
+                    transmit_data_reg <= bram_data_two_word_reg;
                     latch_reg <= '1';
                     if transmit_count_reg = 2 then
                         transmit_state_reg <= done;
@@ -86,7 +86,7 @@ begin
                 end if;
             when s3 =>
                 if drdy = '1' and prev_drdy = '0' then
-                    transmit_data <= bram_data_three_word_reg;
+                    transmit_data_reg <= bram_data_three_word_reg;
                     latch_reg <= '1';
                     if transmit_count_reg = 3 then
                         transmit_state_reg <= done;
@@ -96,7 +96,7 @@ begin
                 end if;
             when s4 =>
                 if drdy = '1' and prev_drdy = '0' then
-                    transmit_data <= bram_data_four_word_reg;
+                    transmit_data_reg <= bram_data_four_word_reg;
                     latch_reg <= '1';
                     transmit_state_reg <= done;
                 end if;
@@ -113,6 +113,7 @@ begin
     end if;
 end process;
 
+transmit_data <= transmit_data_reg;
 ready <= ready_reg;
 complete <= complete_reg;
 latch <= latch_reg;

@@ -28,6 +28,7 @@ architecture behavior of tb_top is
             S_AXI_RRESP   : out std_logic_vector(1 downto 0);
             S_AXI_RVALID  : out std_logic;
             S_AXI_RREADY  : in std_logic;
+            logic_com : in std_logic;
             CTRL_DATA_OUT : out std_logic_vector(31 downto 0);
             CTRL_DATA_IN : in std_logic_vector(31 downto 0);
             WD_CNT_OUT : out std_logic_vector(15 downto 0);
@@ -42,6 +43,7 @@ architecture behavior of tb_top is
             CTRL_DATA_SO : out std_logic_vector(31 downto 0);
             WD_CNT_MI : in std_logic_vector(15 downto 0);
             WD_CNT_SO : out std_logic_vector(15 downto 0);
+            catch_com : in std_logic;
             wd_cnt_conv : out std_logic_vector(31 downto 0);
             ctrl_data_conv : out std_logic
         );
@@ -71,6 +73,7 @@ architecture behavior of tb_top is
             bram_addr_b : out std_logic_vector(29 downto 0);
             nReset : in std_logic;
             enable : in std_logic;
+            complete : out std_logic;
             count : in std_logic_vector(31 downto 0)
         );
     end component;
@@ -128,9 +131,10 @@ architecture behavior of tb_top is
     signal bram_addr_b : std_logic_vector(29 downto 0);
     signal nReset : std_logic := '1';
     signal enable : std_logic := '0';
-    signal count : std_logic_vector(31 downto 0) := (others => '0');
+    signal count : std_logic_vector(31 downto 0);
     signal intc_pin : std_logic := '1';
     signal intc_ctrl : std_logic;
+    signal comreg : std_logic;
 
     -- Clock Generation
     constant clk_100MHz_period : time := 10 ns;
@@ -159,6 +163,7 @@ begin
             S_AXI_RRESP => S_AXI_RRESP,
             S_AXI_RVALID => S_AXI_RVALID,
             S_AXI_RREADY => S_AXI_RREADY,
+            logic_com => comreg,
             CTRL_DATA_OUT => CTRL_DATA_OUT,
             CTRL_DATA_IN => CTRL_DATA_IN,
             WD_CNT_OUT => WD_CNT_OUT,
@@ -171,10 +176,11 @@ begin
             clk_100MHz => clk_100MHz,
             CTRL_DATA_MI => CTRL_DATA_OUT,
             CTRL_DATA_SO => CTRL_DATA_IN,
+            catch_com => comreg,
             WD_CNT_MI => WD_CNT_OUT,
             WD_CNT_SO => WD_CNT_IN,
-            wd_cnt_conv => open,
-            ctrl_data_conv => open
+            wd_cnt_conv => count,
+            ctrl_data_conv => enable
         );
 
     -- Instantiate top
@@ -202,6 +208,7 @@ begin
             bram_addr_b => bram_addr_b,
             nReset => nReset,
             enable => enable,
+            complete => comreg,
             count => count
         );
 
@@ -242,6 +249,16 @@ begin
         S_AXI_ARESETN <= '1';
         nReset <= '1';
         wait for 20 ns;
+        
+                -- Write to AXI
+        S_AXI_AWADDR <= "00100";
+        S_AXI_AWVALID <= '1';
+        S_AXI_WDATA <= x"00000007";
+        S_AXI_WVALID <= '1';
+        wait until (S_AXI_AWREADY = '1' and S_AXI_WREADY = '1');
+        S_AXI_AWVALID <= '0';
+        S_AXI_WVALID <= '0';
+        wait for 50 ns;
 
         -- Write to AXI
         S_AXI_AWADDR <= "00000";
@@ -251,23 +268,7 @@ begin
         wait until (S_AXI_AWREADY = '1' and S_AXI_WREADY = '1');
         S_AXI_AWVALID <= '0';
         S_AXI_WVALID <= '0';
-        wait for 10 ns;
-
-        -- Read from AXI
-        S_AXI_ARADDR <= "00000";
-        S_AXI_ARVALID <= '1';
-        wait until (S_AXI_ARREADY = '1');
-        S_AXI_ARVALID <= '0';
-        S_AXI_RREADY <= '1';
-        wait until (S_AXI_RVALID = '1');
-        S_AXI_RREADY <= '0';
-        wait for 10 ns;
-
-        -- Enable SPI communication
-        enable <= '1';
-        count <= x"0000000A"; -- count = 10
-        wait for 200 ns;
-        enable <= '0';
+        wait for 50 ns;
 
         wait;
     end process;

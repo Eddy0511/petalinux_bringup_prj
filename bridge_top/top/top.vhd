@@ -32,6 +32,7 @@ port (
 
     nReset : in std_logic;
     enable : in std_logic;
+    complete : out std_logic;
     count : in std_logic_vector(31 downto 0)  -- 변경된 부분
 );
 end top;
@@ -185,6 +186,8 @@ architecture RTL of top is
     signal bram_read_datab_reg : std_logic_vector(31 downto 0);
     signal bram_write_datab_reg : std_logic_vector(31 downto 0);
     signal write_data_reg : std_logic_vector(31 downto 0);
+    signal last_flag : std_logic;
+    signal complete_reg : std_logic;
 begin
 
     u1 : tranmitter
@@ -282,6 +285,7 @@ begin
     bram_en_a <= bram_ena_reg;
     bram_read_dataa_reg <= bram_rd_a;
     bram_wr_a <= bram_write_dataa_reg;
+    bram_addr_a <= bram_addra_reg(31 downto 2);
 
     bram_clk_b <= bram_clkb_reg;
     bram_rst_b <= bram_rstb_reg;
@@ -289,10 +293,14 @@ begin
     bram_en_b <= bram_enb_reg;
     bram_read_datab_reg <= bram_rd_b;
     bram_wr_b <= bram_write_datab_reg;
+    bram_addr_b <= bram_addrb_reg(31 downto 2);
 
-
+    complete <= complete_reg;
 
 process(clk_100MHz,nReset)
+    variable tmp : integer;
+    variable last_count : integer;
+    variable target : integer;
 begin
     if nReset = '0' then
         recv_drdy <= '0';
@@ -311,22 +319,51 @@ begin
         bram_validb_reg <= '0';
         bram_addrb_clr_reg <= '0';
         drdy_cnt <= 0;
+        tmp := 0;
+        complete_reg <= '0';
+        last_flag <= '0';
+        bram_addr_clr_reg <= '0';
         write_data_reg <= (others => '0');
     elsif rising_edge(clk_100MHz) then
         case main_state_reg is
           when idle =>
+            complete_reg <= '0';
             if enable = '1' then
+                bram_addr_clr_reg <= '1';
+                bram_addrb_clr_reg <= '1';
+                drdy_cnt <= 0;
                 bram_valid_reg <= '1';
                 main_state_reg <= s1;
+                tmp := to_integer(unsigned(count));
+                if tmp rem 4 = 0 then
+                    target := (tmp / 4);
+                else
+                  target := (tmp / 4) + 1;
+                end if;
+                
+                
+                if target > 1 then
+                    last_count := 4;
+                elsif target = 1 then
+                    last_flag <= '1';
+                    if tmp rem 4 = 0 then
+                        last_count := 4;
+                    else
+                        last_count := tmp rem 4;
+                    end if;
+                    
+                end if;
             end if;
           when s1 =>
+            bram_addr_clr_reg <= '0';
+            bram_addrb_clr_reg <= '0';
             if bram_ready_reg = '1' then
                 bram_valid_reg <= '0';
                 bram_data_reg <= read_data_reg;
                 transmit_valid_reg <= '1';
-                transmit_count_reg <= to_integer(unsigned(count));  -- 변경된 부분
+                transmit_count_reg <= last_count;  -- 변경된 부분
                 receive_valid_reg <= '1';
-                receive_count_reg <= to_integer(unsigned(count));  -- 변경된 부분
+                receive_count_reg <= last_count;  -- 변경된 부분
                 main_state_reg <= s2;
             end if;
           when s2 =>
@@ -349,19 +386,29 @@ begin
                 recv_drdy <= '0';
             end if;
           when s3 =>
-            if drdy_cnt = 4 then
-                if spi_cycle < 3 then
-                    spi_cnt <= 0;
+            if last_flag = '1' then
+                complete_reg <= '1';
+                main_state_reg <= done;
+            end if;
+            
+            target := target - 1;
+            if target > 1 then
+                    last_count := 4;
                     bram_valid_reg <= '1';
                     main_state_reg <= s1;
-                    spi_cycle <= spi_cycle + 1;
-                else
-                    spi_cnt <= 0;
-                    main_state_reg <= done;
-                end if;
-                bram_validb_reg <= '1';
-                write_data_reg <= recv_bram_data;
+            elsif target = 1 then
+                    last_flag <= '1';
+                    if tmp rem 4 = 0 then
+                        last_count := 4;
+                    else
+                        last_count := tmp rem 4;
+                    end if;
+                    bram_valid_reg <= '1';
+                    main_state_reg <= s1;
             end if;
+            spi_cnt <= 0;
+            bram_validb_reg <= '1';
+            write_data_reg <= recv_bram_data;
         when done =>
             main_state_reg <= idle;
           when others =>
