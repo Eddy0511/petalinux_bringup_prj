@@ -1,168 +1,69 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
+--use IEEE.STD_LOGIC_ARITH.ALL;
 
 entity top is
 port (
     clk_100MHz : in std_logic;
-    clk_10MHz : in std_logic;
-
-    -- spi port
-    miso : in std_logic;
-    mosi : out std_logic;
-    sclk : out std_logic;
-    cs : out std_logic;
-
-    -- bram interface
-    bram_clk_a : out std_logic;
-    bram_rst_a : out std_logic;
-    bram_we_a : out std_logic_vector(3 downto 0);
-    bram_en_a : out std_logic;
-    bram_rd_a : in std_logic_vector(31 downto 0);
-    bram_wr_a : out std_logic_vector(31 downto 0);
-    bram_addr_a : out std_logic_vector(29 downto 0);
-
-    bram_clk_b : out std_logic;
-    bram_rst_b : out std_logic;
-    bram_we_b : out std_logic_vector(3 downto 0);
-    bram_en_b : out std_logic;
-    bram_rd_b : in std_logic_vector(31 downto 0);
-    bram_wr_b : out std_logic_vector(31 downto 0);
-    bram_addr_b : out std_logic_vector(29 downto 0);
 
     nReset : in std_logic;
     enable : in std_logic;
     complete : out std_logic;
-    count : in std_logic_vector(31 downto 0)  -- 변경된 부분
+    count : in std_logic_vector(31 downto 0);  -- 변경된 부분
+
+    transmit_valid : out std_logic;
+    transmit_ready : in std_logic;
+    transmit_complete : in std_logic;
+    transmit_count : out std_logic_vector(31 downto 0);
+    transmit_bram_data : out std_logic_vector(31 downto 0);
+    
+    transmit_bram_ctrl_valid : out std_logic;
+    transmit_bram_ctrl_ready : in std_logic;
+    transmit_bram_addr_clr : out std_logic;
+    transmit_bram_read_data : in std_logic_vector(31 downto 0);
+
+    spi_top_enable : out std_logic;
+    spi_top_valid : in std_logic;
+    spi_top_ready : out std_logic;
+    spi_top_drdy : in std_logic;
+
+    receivce_valid : out std_logic;
+    receive_ready : in std_logic;
+    receive_count : out std_logic_vector(31 downto 0);
+    receive_bram_data : in std_logic_vector(31 downto 0);
+    receive_drdy : out std_logic;
+
+    receive_bram_ctrl_valid : out std_logic;
+    receive_bram_ctrl_ready : in std_logic;
+    receive_bram_ctrl_addr_clr : out std_logic;
+    receive_bram_ctrl_write_data : out std_logic_vector(31 downto 0)
+
 );
 end top;
 
 architecture RTL of top is
-
-    component tranmitter
-        port(
-            clk_100MHz : in std_logic;
-            nReset : in std_logic;
-            valid : in std_logic;
-            ready : out std_logic;
-            complete : out std_logic;
-            transmit_count : in integer;
-            bram_data : in std_logic_vector(31 downto 0);
-            transmit_data : out std_logic_vector(7 downto 0);
-            drdy : in std_logic;
-            latch : out std_logic
-        );
-    end component;
-
-    component bram_ctrl
-        port(
-            clk_100MHz : in std_logic;
-            nReset : in std_logic;
-            valid : in std_logic;
-            ready : out std_logic;
-            addr_clr : in std_logic;
-            read_data : out std_logic_vector(31 downto 0);
-            bram_clka : out std_logic;
-            bram_rsta : out std_logic;
-            bram_wea : out std_logic_vector(3 downto 0);
-            bram_ena : out std_logic;
-            bram_addra : out std_logic_vector(31 downto 0);
-            bram_read_dataa : in std_logic_vector(31 downto 0);
-            bram_write_dataa : out std_logic_vector(31 downto 0)
-        );
-    end component;    
-
-    component SPI_top
-    Port (
-        clk_10MHz : in std_logic;
-        nReset : in std_logic;
-        enable : in STD_LOGIC;
-
-        valid : out std_logic;
-        ready : in std_logic;
-        drdy : out std_logic;
-
-        transmit : out std_logic_vector(7 downto 0);
-        receive : in std_logic_vector(7 downto 0);
-
-        sclk : out STD_LOGIC;
-        MISO : in STD_LOGIC;
-        MOSI : out STD_LOGIC;
-        cs : out STD_LOGIC
-    );
-    end component;    
-
-    component receiver 
-    port
-    (
-        clk_100MHz : in std_logic;
-        nReset : in std_logic;
-
-        valid : in std_logic;
-        ready : out std_logic;
-
-        receive_count : in integer;
-
-        bram_data : out std_logic_vector(31 downto 0);
-        receive_data : in std_logic_vector(7 downto 0);
-
-        drdy : in std_logic
-    );
-    end component;
-
-    component miso_bram_ctrl
-    port
-    (
-        clk_100MHz : in std_logic;
-        nReset : in std_logic;
-
-        valid : in std_logic;
-        ready : out std_logic;
-        addr_clr : in std_logic;
-
-        write_data : in std_logic_vector(31 downto 0);
-
-        bram_clka : out std_logic;
-        bram_rsta : out std_logic;
-        bram_wea : out std_logic_vector(3 downto 0);
-        bram_ena : out std_logic;
-        bram_addra : out std_logic_vector(31 downto 0);
-        bram_write_dataa : out std_logic_vector(31 downto 0)
-    );
-    end component;
 
     signal transmit_valid_reg : std_logic;
     signal transmit_ready_reg : std_logic;
     signal transmit_complete_reg : std_logic;
     signal transmit_count_reg : integer;
     signal bram_data_reg : std_logic_vector(31 downto 0);
-    signal transmit_data_reg : std_logic_vector(7 downto 0);
+
     signal drdy_reg : std_logic;
-    signal latch_reg : std_logic;
+
     signal read_data_reg : std_logic_vector(31 downto 0);
 
     signal bram_valid_reg : std_logic;
     signal bram_ready_reg : std_logic;
     signal bram_addr_clr_reg : std_logic;
-    signal bram_clka_reg : std_logic;
-    signal bram_rsta_reg : std_logic;
-    signal bram_wea_reg : std_logic_vector(3 downto 0);
-    signal bram_ena_reg : std_logic;
-    signal bram_addra_reg : std_logic_vector(31 downto 0);
-    signal bram_read_dataa_reg : std_logic_vector(31 downto 0);
-    signal bram_write_dataa_reg : std_logic_vector(31 downto 0);
 
     signal spi_enable_reg : std_logic;
     signal spi_valid_reg : std_logic;
     signal mosi_ready_reg : std_logic;
-    signal receive_data_reg : std_logic_vector(7 downto 0);
-    signal sclk_reg : std_logic;
-    signal mosi_reg : std_logic;
-    signal miso_reg : std_logic;
-    signal cs_reg : std_logic;
+
     signal prev_spi_valid : std_logic;
     signal spi_cnt : integer;
-    signal spi_cycle : integer;
     signal drdy_cnt : integer;
     signal prev_drdy : std_logic;
 
@@ -178,124 +79,41 @@ architecture RTL of top is
     signal bram_validb_reg : std_logic;
     signal bram_readyb_reg : std_logic;
     signal bram_addrb_clr_reg : std_logic;
-    signal bram_clkb_reg : std_logic;
-    signal bram_rstb_reg : std_logic;
-    signal bram_web_reg : std_logic_vector(3 downto 0);
-    signal bram_enb_reg : std_logic;
-    signal bram_addrb_reg : std_logic_vector(31 downto 0);
-    signal bram_read_datab_reg : std_logic_vector(31 downto 0);
-    signal bram_write_datab_reg : std_logic_vector(31 downto 0);
+
     signal write_data_reg : std_logic_vector(31 downto 0);
     signal last_flag : std_logic;
     signal complete_reg : std_logic;
 begin
 
-    u1 : tranmitter
-    port map(
-        clk_100MHz => clk_100MHz,
-        nReset => nReset,
-        valid => transmit_valid_reg,
-        ready => transmit_ready_reg,
-        complete => transmit_complete_reg,
-        transmit_count => transmit_count_reg,
-        bram_data => bram_data_reg,
-        transmit_data => transmit_data_reg,
-        drdy => drdy_reg,
-        latch => latch_reg
-    );
-
-    u2 : bram_ctrl
-    port map(
-        clk_100MHz => clk_100MHz,
-        nReset => nReset,
-        valid => bram_valid_reg,
-        ready => bram_ready_reg,
-        addr_clr => bram_addr_clr_reg,
-        read_data => read_data_reg,
-        bram_clka => bram_clka_reg,
-        bram_rsta => bram_rsta_reg,
-        bram_wea => bram_wea_reg,
-        bram_ena => bram_ena_reg,
-        bram_addra => bram_addra_reg,
-        bram_read_dataa => bram_read_dataa_reg,
-        bram_write_dataa => bram_write_dataa_reg
-    );
-
-    u3 : SPI_top
-    Port map (
-        clk_10MHz => clk_10MHz,
-        nReset =>   nReset,
-        enable => spi_enable_reg,
-        valid =>  spi_valid_reg,
-        ready =>  mosi_ready_reg,
-        drdy =>   drdy_reg,
-        transmit =>  receive_data_reg,
-        receive =>  transmit_data_reg,
-        sclk =>   sclk_reg,
-        MISO =>   miso_reg,
-        MOSI =>   mosi_reg,
-        cs =>   cs_reg
-    );
-
-    u5 : receiver
-    port map(
-        clk_100MHz => clk_100MHz,
-        nReset  =>   nReset,
-
-        valid => receive_valid_reg,
-        ready => receive_ready_reg,
-
-        receive_count => receive_count_reg,
-
-        bram_data => recv_bram_data,
-        receive_data => receive_data_reg,
-
-        drdy => recv_drdy
-    );
-
-    u6 : miso_bram_ctrl 
-    port map
-    (
-        clk_100MHz => clk_100MHz,
-        nReset  =>   nReset,
-
-        valid => bram_validb_reg,
-        ready => bram_readyb_reg,
-        addr_clr => bram_addrb_clr_reg,
-
-        write_data => write_data_reg,
-
-        bram_clka  => bram_clkb_reg,
-        bram_rsta  => bram_rstb_reg,
-        bram_wea  => bram_web_reg,
-        bram_ena  => bram_enb_reg,
-        bram_addra => bram_addrb_reg,
-        bram_write_dataa => bram_write_datab_reg
-    );
-
-
-    miso_reg <= miso;
-    mosi <= mosi_reg;
-    sclk <= sclk_reg;
-    cs <= cs_reg;
-
-    bram_clk_a <= bram_clka_reg;
-    bram_rst_a <= bram_rsta_reg;
-    bram_we_a <= bram_wea_reg;
-    bram_en_a <= bram_ena_reg;
-    bram_read_dataa_reg <= bram_rd_a;
-    bram_wr_a <= bram_write_dataa_reg;
-    bram_addr_a <= bram_addra_reg(31 downto 2);
-
-    bram_clk_b <= bram_clkb_reg;
-    bram_rst_b <= bram_rstb_reg;
-    bram_we_b <= bram_web_reg;
-    bram_en_b <= bram_enb_reg;
-    bram_read_datab_reg <= bram_rd_b;
-    bram_wr_b <= bram_write_datab_reg;
-    bram_addr_b <= bram_addrb_reg(31 downto 2);
-
     complete <= complete_reg;
+
+    transmit_valid <= transmit_valid_reg;
+    transmit_ready_reg <= transmit_ready;
+    transmit_complete_reg <= transmit_complete;
+    transmit_count <= std_logic_vector(to_unsigned(transmit_count_reg,32));
+    transmit_bram_data <= bram_data_reg;
+
+    transmit_bram_ctrl_valid <= bram_valid_reg;
+    bram_ready_reg <= transmit_bram_ctrl_ready;
+    transmit_bram_addr_clr <= bram_addr_clr_reg;
+    read_data_reg <= transmit_bram_read_data;
+
+    spi_top_enable <= spi_enable_reg;
+    spi_valid_reg <= spi_top_valid;
+    spi_top_ready <= mosi_ready_reg;
+    drdy_reg <= spi_top_drdy;
+
+
+    receivce_valid <= receive_valid_reg;
+    receive_ready_reg <= receive_ready;
+    receive_count <= std_logic_vector(to_unsigned(receive_count_reg,32));
+    recv_bram_data <= receive_bram_data;
+    receive_drdy <= recv_drdy;
+
+    receive_bram_ctrl_valid <= bram_validb_reg;
+    bram_readyb_reg <= receive_bram_ctrl_ready;
+    receive_bram_ctrl_addr_clr <= bram_addrb_clr_reg;
+    receive_bram_ctrl_write_data <= write_data_reg;
 
 process(clk_100MHz,nReset)
     variable tmp : integer;
@@ -315,7 +133,6 @@ begin
         spi_enable_reg <= '0';
         prev_spi_valid <= '0';
         spi_cnt <= 0;
-        spi_cycle <= 0;
         bram_validb_reg <= '0';
         bram_addrb_clr_reg <= '0';
         drdy_cnt <= 0;
